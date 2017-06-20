@@ -1,0 +1,156 @@
+//The following macro is for stack projection and background subtraction of images 
+// in a given folder, and saving these images to a new folder for image analysis.
+var count=0;
+var fileNames=newArray();
+macro "Batch create image projections [1]” 
+{ 
+count=0;
+fileNames=newArray();
+setOption("ExpandableArrays", true);
+Dialog.create("Set Macro Initial Conditions:");
+Dialog.addMessage("The number of channels must be consistent\n across all images in a folder");
+Dialog.addNumber("Number of Channels: ", 2);
+Dialog.addChoice("Stack order :", newArray("xyczt(default)", "xyzct"));
+Dialog.addMessage("Which projection type(s):");
+Dialog.addCheckbox("Average Intensity", 1);
+Dialog.addCheckbox("Sum Slices", 0);
+Dialog.addCheckbox("Max Intensity", 0);
+Dialog.show();
+chNum = Dialog.getNumber();
+StackOrder = Dialog.getChoice();
+avgproj = Dialog.getCheckbox();
+sumproj = Dialog.getCheckbox();
+maxproj = Dialog.getCheckbox();
+locationOfFiles = getDirectory("Choose location of images to process");
+locationOfSave= locationOfFiles+"ProjectionBS"+File.separator;
+File.makeDirectory(locationOfSave);
+listFiles(locationOfFiles);
+function listFiles(dir) 
+{
+     list = getFileList(dir);
+     for (i=0; i<list.length; i++) 
+	{
+	
+	   if (endsWith(list[i], "/"))
+		{
+		listFiles(""+dir+list[i]);
+               }        
+	  else if (endsWith(list[i],"tif"))
+		{
+		fileNames[count]=dir+list[i];
+		count=count+1;
+		}	 
+	}
+}
+
+imagelist=fileNames;
+for (i=0; i<imagelist.length; i++) 
+{
+// Generating stack projections as average or max or sum of intensities
+pathOfFile = imagelist[i];
+	if (endsWith(pathOfFile, ".tif")==1) 
+	     { 
+		open(pathOfFile); 
+		name = getTitle();
+		getDimensions(x, y, z, c, t);
+		zSlices = (z*c*t) / chNum;
+		if (zSlices==round(zSlices))
+			{ 
+			run("Stack to Hyperstack...", "order="+StackOrder+" channels="+chNum+" slices="+zSlices+" frames=1 display=Composite");
+			if (avgproj==1)
+				{
+			selectWindow(name);
+			run("Z Project...", "start=1 stop="+zSlices+" projection=[Average Intensity]");
+			selectWindow("AVG_"+name);
+			fileName= "AVG_"+name;
+			saveAs("tiff", locationOfSave+"/AVG_"+name);
+			currentName= locationOfSave+"/AVG_"+name;
+				}
+			if (maxproj==1)
+				{
+			selectWindow(name);
+			run("Z Project...", "start=1 stop="+zSlices+" projection=[Max Intensity]");
+			selectWindow("MAX_"+name);
+			fileName="MAX_"+name;
+			saveAs("tiff", locationOfSave+"MAX_"+name);
+			currentName= locationOfSave+"MAX_"+name;
+				}
+			if (sumproj==1) 
+				{
+			selectWindow(name);
+			run("Z Project...", "start=1 stop="+zSlices+" projection=[Sum Slices]");
+			selectWindow("SUM_"+name);
+			fileName="SUM_"+name;
+			saveAs("tiff", locationOfSave+"/SUM_"+name);
+			currentName= locationOfSave+"/SUM_"+name;
+				}
+			run("Close All");			
+			open(currentName);
+
+			//Background subtraction for channel 1 by choosing mean intensity
+			// 4 small rectangles at image corners as background intensity
+
+			run("Split Channels");
+			channel1Name="C1-"+fileName;
+			channel2Name="C2-"+fileName;
+			selectWindow(channel1Name);
+			w=getWidth();
+			h=getHeight();
+			size=50;  //Arbitrary and can be changed
+			mean1Array=newArray();
+			makeRectangle(0,0,size,size);
+			getStatistics(area, mean);
+			mean1Array[0]=mean;
+			makeRectangle(w-size,0,size,size);
+			getStatistics(area,mean);
+			mean1Array[1]=mean;
+			makeRectangle(0,h-size,size,size);
+			getStatistics(area, mean);
+			mean1Array[2]=mean;
+			makeRectangle(w-size,h-size,size,size);
+			getStatistics(area,mean);
+			mean1Array[3]=mean;
+			Array.getStatistics(mean1Array, min,max,mean);
+			BGvalue=mean;
+			run("Select None");
+			run("Subtract...", "value=" + BGvalue);
+
+			//Background subtraction for channel 2 by choosing mean intensity
+			// 4 small rectangles at image corners as background intensity
+			
+			selectWindow(channel2Name);
+			mean2Array=newArray();
+			makeRectangle(0,0,size,size);
+			getStatistics(area, mean);
+			mean2Array[0]=mean;
+			makeRectangle(w-size,0,size,size);
+			getStatistics(area, mean);
+			mean2Array[1]=mean;
+			makeRectangle(0,h-size,size,size);
+			getStatistics(area, mean);
+			mean2Array[2]=mean;
+			makeRectangle(w-size,h-size,size,size);
+			getStatistics(area,mean);
+			mean2Array[3]=mean;
+			Array.getStatistics(mean2Array, min,max,mean);
+			BGvalue=mean;
+			run("Select None");
+			run("Subtract...", "value=" + BGvalue); 
+
+			//Create the background subtracted images
+			run("Merge Channels...", "c1="+channel1Name+ " c2="+channel2Name+ " create");
+
+
+			
+			saveAs(locationOfSave+"/BS_"+ fileName);
+			run("Close All");
+			} 
+		else 
+			{
+		print("Error: Number of slices does not match predicted stack size -- \n"+pathOfFile);
+			}
+		}
+}
+}	
+
+

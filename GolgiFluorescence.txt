@@ -1,0 +1,29 @@
+//To measure Golgi fluorescence for every image
+macro "GolgiFL [a]"
+{
+fileName=getTitle();
+dir = getDirectory("image");
+run("Split Channels"); //to be run on Background subtracted Images
+channel1Name="C1-"+fileName;
+channel2Name="C2-"+fileName;
+selectWindow(channel1Name);
+ID = getImageID();
+run("Duplicate...", " ");
+copy = getImageID();
+selectImage(ID);  //make sure we still have the same image
+value=100;  //Change if required experiment wise NOT within one kind of exp.
+setThreshold(0,value);
+run("Convert to Mask");
+waitForUser("ROI Selection", "Select an ROI to analyze. Thereafter click OK to allow Macro to proceed");
+roiManager("add");
+close(channel1Name)
+selectImage(copy); 
+c=roiManager("count")-1;
+roiManager("Select",c);
+run("Measure");
+close(copy);
+selectWindow(channel2Name);
+roiManager("Select",c);
+run("Measure");
+close(channel2Name);
+}
